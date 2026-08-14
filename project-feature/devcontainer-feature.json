@@ -1,0 +1,9 @@
+{
+    "id": "project-feature",
+    "version": "1.0.0",
+    "name": "Project preferences packaged perfectly",
+    "installsAfter": [
+        "ghcr.io/devcontainers/features/github-cli",
+        "ghcr.io/devcontainers/features/docker-in-docker"
+    ]
+}
