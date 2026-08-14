@@ -80,6 +80,10 @@ RUN curl -fsSL https://claude.ai/install.sh | bash && \
   claude plugin marketplace add trailofbits/skills && \
   claude plugin marketplace add trailofbits/skills-curated
 
+# Install RTK
+RUN curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh && \
+    rtk init -g --auto-patch
+
 # Install Python 3.13 via uv (fast binary download, not source compilation)
 RUN uv python install 3.13 --default
 

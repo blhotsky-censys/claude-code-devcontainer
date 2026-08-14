@@ -10,7 +10,8 @@
     }
   },
   "features": {
-    "ghcr.io/devcontainers/features/github-cli:1": {}
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:4": {}
   },
   "runArgs": [
     "--cap-add=NET_ADMIN",
@@ -63,13 +64,13 @@
     "NPM_CONFIG_UPDATE_NOTIFIER": "false",
     "NPM_CONFIG_MINIMUM_RELEASE_AGE": "1440",
     "PYTHONDONTWRITEBYTECODE": "1",
-    "PIP_DISABLE_PIP_VERSION_CHECK": "1"
+    "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+    "DO_NOT_TRACK": 1
   },
   "remoteEnv": {
-    "CLAUDE_CODE_OAUTH_TOKEN": "${localEnv:CLAUDE_CODE_OAUTH_TOKEN:}",
-    "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY:}"
+    "RTK_TELEMETRY_DISABLED": 1
   },
-  "initializeCommand": "test -f \"$HOME/.gitconfig\" || touch \"$HOME/.gitconfig\"",
+  "initializeCommand": "initializeCommand.sh",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
   "workspaceFolder": "/workspace",
   "postCreateCommand": "uv run --no-project /opt/post_install.py"

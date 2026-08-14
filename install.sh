@@ -4,6 +4,15 @@ set -euo pipefail
 # Claude Code Devcontainer CLI Helper
 # Provides the `devc` command for managing devcontainers
 
+# Silence, fools!
+pushd() {
+    command pushd "$@" > /dev/null
+}
+
+popd() {
+    command popd "$@" > /dev/null
+}
+
 # Resolve symlinks to get actual script location
 SOURCE="${BASH_SOURCE[0]}"
 while [[ -L "$SOURCE" ]]; do
@@ -13,6 +22,7 @@ while [[ -L "$SOURCE" ]]; do
 done
 SCRIPT_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
 SCRIPT_NAME="$(basename "$0")"
+DEVCONTAINERD="${HOME}/.devcontainerd"
 
 # Colors for output
 RED='\033[0;31m'
@@ -76,12 +86,35 @@ log_error() {
   echo -e "${RED}[devc]${NC} $1" >&2
 }
 
+check_devcontainerd_clean() {
+    # Verify the directory exists
+    if [ ! -d "$DEVCONTAINERD" ]; then
+        mkdir -p "$DEVCONTAINERD"
+    fi
+    pushd "$DEVCONTAINERD"
+    # Make sure it's a work directory
+    if ! git rev-parse --is-inside-work-tree &> /dev/null; then
+        git init -q -b main
+    fi
+
+    if [ ! -z "$(git status --porcelain)" ]; then
+        echo "Resource directory directory, please check $DEVCONTAINERD and commit all desirable changes";
+        popd
+        exit 1;
+    fi
+    popd
+}
+
 check_devcontainer_cli() {
   if ! command -v devcontainer &>/dev/null; then
     log_error "devcontainer CLI not found."
     log_info "Install it with: npm install -g @devcontainers/cli"
     exit 1
   fi
+
+  # Check if clean
+  check_devcontainerd_clean
+  setup_preferences
 }
 
 check_no_sys_admin() {
@@ -95,6 +128,53 @@ check_no_sys_admin() {
     log_error "This defeats the read-only .devcontainer mount."
     exit 1
   fi
+}
+
+commit_to_repository() {
+    obj="${1}"
+    pushd "$DEVCONTAINERD"
+    git add "$obj"
+    git commit --no-gpg-sign -m "Added $obj to the repository"
+    popd
+}
+
+initialize_from_home() {
+    local obj="${1}"
+    copy_to_repository "${HOME}/${obj}" "files" "$obj"
+}
+
+copy_to_repository() {
+    local src="${1}"
+    local area="${2}"
+    local obj="${3}"
+    local ref="${area}/$obj"
+    local dst="${DEVCONTAINERD}/${ref}"
+
+    # Skip if we don't have this file
+    if [ ! -e "$src" ]; then
+        log_info "copy_to_repository($src) doesn't exist, skipping"
+        return
+    elif [ -e "$dst" ]; then
+        log_info "copy_to_repository($ref) already exists, skipping"
+        return
+    fi
+
+    local dstdir="$(dirname "$dst")"
+
+    # Copy to the repository
+    mkdir -p "$dstdir"
+    cp -rL "$src" "$dstdir"
+    commit_to_repository "$ref"
+    log_info "copy_to_repository() $obj added to the repository"
+
+}
+
+setup_preferences() {
+    initialize_from_home ".gitconfig"
+    mkdir -p "{$HOME}/.claude/skills"
+    initialize_from_home ".claude/skills"
+    mkdir -p "${DEVCONTAINERD}/features/personal-feature"
+    copy_to_repository "${SCRIPT_DIR}/personal-feature" "features" "personal-feature"
 }
 
 get_workspace_folder() {
@@ -126,6 +206,8 @@ extract_mounts_to_file() {
         (contains("target=/home/vscode/.claude,") | not) and
         (contains("target=/home/vscode/.config/gh,") | not) and
         (contains("target=/home/vscode/.gitconfig,") | not) and
+        (contains("target=/home/vscode/.git/config,") | not) and
+        (contains("target=/home/vscode/.git/hooks,") | not) and
         (contains("target=/workspace/.devcontainer,") | not)
       )
     ) | if length > 0 then . else empty end
@@ -213,6 +295,7 @@ cmd_template() {
   cp "$SCRIPT_DIR/devcontainer.json" "$devcontainer_dir/"
   cp "$SCRIPT_DIR/post_install.py" "$devcontainer_dir/"
   cp "$SCRIPT_DIR/.zshrc" "$devcontainer_dir/"
+  cp "$SCRIPT_DIR/initializeCommand.sh" "$devcontainer_dir/"
 
   # Restore preserved mounts
   if [[ -n "$preserved_mounts" ]]; then
