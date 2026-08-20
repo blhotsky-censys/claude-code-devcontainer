@@ -3,6 +3,6 @@
     "version": "1.0.0",
     "name": "Personal preferences packaged perfectly",
     "installsAfter": [
-        "project-feature"
+        "./project-feature"
     ]
 }

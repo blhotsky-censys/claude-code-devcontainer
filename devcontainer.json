@@ -9,7 +9,9 @@
   },
   "features": {
     "ghcr.io/devcontainers/features/github-cli:1": {},
-    "ghcr.io/devcontainers/features/docker-in-docker:4": {}
+    "ghcr.io/devcontainers/features/docker-in-docker:4": {},
+    "./project-feature" : {},
+    "./personal-feature": {}
   },
   "runArgs": [
     "--cap-add=NET_ADMIN",
@@ -63,12 +65,12 @@
     "NPM_CONFIG_MIN_RELEASE_AGE": "1",
     "PYTHONDONTWRITEBYTECODE": "1",
     "PIP_DISABLE_PIP_VERSION_CHECK": "1",
-    "DO_NOT_TRACK": 1
+    "DO_NOT_TRACK": "1"
   },
   "remoteEnv": {
-    "RTK_TELEMETRY_DISABLED": 1
+    "RTK_TELEMETRY_DISABLED": "1"
   },
-  "initializeCommand": "initializeCommand.sh",
+  "initializeCommand": ".devcontainer/initializeCommand.sh",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
   "workspaceFolder": "/workspace",
   "postCreateCommand": "uv run --no-project /opt/post_install.py"
