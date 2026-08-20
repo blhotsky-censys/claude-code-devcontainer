@@ -36,14 +36,15 @@ print_usage() {
 Usage: devc <command> [options]
 
 Commands:
-    .                   Install devcontainer template to current directory and start
-    up                  Start the devcontainer in current directory
-    rebuild             Rebuild the devcontainer (preserves auth volumes)
-    down                Stop the devcontainer
-    shell               Open a shell in the running container
-    self-install        Install 'devc' command to ~/.local/bin
-    update              Update devc to the latest version
-    template [dir]      Copy devcontainer template to directory (default: current)
+    .                    Install devcontainer template to current directory and start
+    up                   Start the devcontainer in current directory
+    rebuild              Rebuild the devcontainer (preserves auth volumes)
+    down                 Stop the devcontainer
+    shell                Open a shell in the running container
+    self-install         Install 'devc' command to ~/.local/bin
+    update               Update devc to the latest version
+    template [dir]       Copy devcontainer template to directory (default: current)
+    feature <act> <name> Add/Remove features from projects action one of: add, rm, ls
     exec <cmd>          Execute a command in the running container
     upgrade             Upgrade Claude Code to latest version
     mount <host> <cont> Add a mount to the devcontainer (recreates container)
@@ -98,7 +99,7 @@ check_devcontainerd_clean() {
     fi
 
     if [ ! -z "$(git status --porcelain)" ]; then
-        echo "Resource directory directory, please check $DEVCONTAINERD and commit all desirable changes";
+        log_error "check_devcontainerd_clean() Resource directory dirty, please check $DEVCONTAINERD and commit all desirable changes";
         popd
         exit 1;
     fi
@@ -140,10 +141,10 @@ commit_to_repository() {
 
 initialize_from_home() {
     local obj="${1}"
-    copy_to_repository "${HOME}/${obj}" "files" "$obj"
+    ensure_default "${HOME}/${obj}" "files" "$obj"
 }
 
-copy_to_repository() {
+ensure_default() {
     local src="${1}"
     local area="${2}"
     local obj="${3}"
@@ -152,10 +153,10 @@ copy_to_repository() {
 
     # Skip if we don't have this file
     if [ ! -e "$src" ]; then
-        log_info "copy_to_repository($src) doesn't exist, skipping"
+        log_info "ensure_default($src) doesn't exist, skipping"
         return
     elif [ -e "$dst" ]; then
-        log_info "copy_to_repository($ref) already exists, skipping"
+        log_info "ensure_default($ref) already exists, skipping"
         return
     fi
 
@@ -165,16 +166,16 @@ copy_to_repository() {
     mkdir -p "$dstdir"
     cp -rL "$src" "$dstdir"
     commit_to_repository "$ref"
-    log_info "copy_to_repository() $obj added to the repository"
+    log_info "ensure_default($ref) added to the repository"
 
 }
 
 setup_preferences() {
     initialize_from_home ".gitconfig"
-    mkdir -p "{$HOME}/.claude/skills"
+    mkdir -p "$HOME/.claude/skills"
     initialize_from_home ".claude/skills"
-    mkdir -p "${DEVCONTAINERD}/features/personal-feature"
-    copy_to_repository "${SCRIPT_DIR}/personal-feature" "features" "personal-feature"
+    mkdir -p "$DEVCONTAINERD/features"
+    ensure_default "$SCRIPT_DIR/personal-feature" "features" "personal-feature"
 }
 
 get_workspace_folder() {
@@ -296,6 +297,15 @@ cmd_template() {
   cp "$SCRIPT_DIR/post_install.py" "$devcontainer_dir/"
   cp "$SCRIPT_DIR/.zshrc" "$devcontainer_dir/"
   cp "$SCRIPT_DIR/initializeCommand.sh" "$devcontainer_dir/"
+  cp "$SCRIPT_DIR/gitignore.project" "$devcontainer_dir/.gitignore"
+
+  if [ ! -e "$devcontainer_dir/project-feature" ]; then
+      cp -rL "$SCRIPT_DIR/project-feature" "$devcontainer_dir/"
+  fi
+
+  if [ ! -e "$devcontainer_dir/personal-feature" ]; then
+      ln -s "$DEVCONTAINERD/features/personal-feature" "$devcontainer_dir/personal-feature"
+  fi
 
   # Restore preserved mounts
   if [[ -n "$preserved_mounts" ]]; then
@@ -349,6 +359,75 @@ cmd_down() {
   else
     log_warn "No running devcontainer found for $workspace_folder"
   fi
+}
+
+cmd_feature() {
+  local workspace_folder
+  workspace_folder="$(get_workspace_folder ".")"
+  action="${1:-}"
+  feature="${2:-}"
+
+  project_json="$workspace_folder/.devcontainer/project-feature/devcontainer-feature.json"
+  if [ ! -f "$project_json" ]; then
+      echo "Project Feature missing, initialize with $SCRIPT_NAME .";
+      exit 1;
+  fi
+
+  check_devcontainer_cli
+  check_no_sys_admin "$workspace_folder"
+
+  declare -a features
+  features+=("go=ghcr.io/devcontainers/features/go:1")
+  features+=("java=ghcr.io/devcontainers/features/java:1")
+  features+=("node=ghcr.io/devcontainers/features/node:2")
+  features+=("python=ghcr.io/devcontainers/features/python:1")
+  features+=("rust=ghcr.io/devcontainers/features/rust:1")
+
+  echo ""
+  case "$action" in
+    add)
+      for elm in "${features[@]}"; do
+          f="${elm%%=*}"
+          v="${elm#*=}"
+          if [ "$f" == "$feature" ]; then
+            new="$(jq -r ".dependsOn[\"$v\"] = {}" "$project_json")"
+            echo "$new" > "$project_json"
+            log_success "Added feature '$f' to $project_json"
+            exit 0
+          fi
+      done
+      ;;
+    ls)
+      echo "Available feature short cuts:"
+      for elm in "${features[@]}"; do
+          f="${elm%%=*}"
+          v="${elm#*=}"
+          if grep -q "$v" "$workspace_folder/.devcontainer/project-feature/devcontainer-feature.json"; then
+              is_set="+"
+          else
+              is_set=" "
+          fi
+          echo " $is_set $f"
+      done
+      echo ""
+      echo "See https://containers.dev/features for more features"
+      ;;
+    rm)
+      for elm in "${features[@]}"; do
+          f="${elm%%=*}"
+          v="${elm#*=}"
+          if [ "$f" == "$feature" ]; then
+            new="$(jq -r "del(.dependsOn[\"$v\"])" "$project_json")"
+            echo "$new" > "$project_json"
+            log_success "Removed feature '$f' from $project_json"
+            exit 0
+          fi
+      done
+      ;;
+    *)
+      echo "valid actions: add, ls, rm"
+      ;;
+  esac
 }
 
 cmd_shell() {
@@ -927,6 +1006,9 @@ main() {
     ;;
   template)
     cmd_template "$@"
+    ;;
+  feature)
+    cmd_feature "$@"
     ;;
   help | --help | -h)
     print_usage

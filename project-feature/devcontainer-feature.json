@@ -2,8 +2,10 @@
     "id": "project-feature",
     "version": "1.0.0",
     "name": "Project preferences packaged perfectly",
+    "dependsOn": {
+        "ghcr.io/devcontainers/features/docker-in-docker": {}
+    },
     "installsAfter": [
-        "ghcr.io/devcontainers/features/github-cli",
-        "ghcr.io/devcontainers/features/docker-in-docker"
+        "ghcr.io/devcontainers/features/github-cli"
     ]
 }
