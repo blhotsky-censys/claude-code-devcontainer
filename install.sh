@@ -14,22 +14,12 @@ popd() {
 }
 
 # Resolve symlinks to get actual script location
-SOURCE="${BASH_SOURCE[0]}"
-while [[ -L "$SOURCE" ]]; do
-  DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
-  SOURCE="$(readlink "$SOURCE")"
-  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
-done
-SCRIPT_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
+SOURCE="$(realpath "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(dirname "$SOURCE")"
 SCRIPT_NAME="$(basename "$0")"
 DEVCONTAINERD="${HOME}/.devcontainerd"
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+. "$SCRIPT_DIR/library.sh"
 
 print_usage() {
   cat <<EOF
@@ -44,10 +34,13 @@ Commands:
     self-install         Install 'devc' command to ~/.local/bin
     update               Update devc to the latest version
     template [dir]       Copy devcontainer template to directory (default: current)
-    feature <act> <name> Add/Remove features from projects action one of: add, rm, ls
+    feature <act> <name> [scope] Add/Remove features from projects action one of: add, rm, ls
+                                 scope is either "project", the default or "personal"
     exec <cmd>          Execute a command in the running container
     upgrade             Upgrade Claude Code to latest version
-    mount <host> <cont> Add a mount to the devcontainer (recreates container)
+    mount <host> <cont> [--readonly] Add a mount to the devcontainer (recreates container)
+    clone <host> [--readonly] Copy contents of host path to ~/.devcontainer/files and mount
+                               the result into the HOME directory of the container
     sync [project] [--trusted]  Sync sessions from devcontainers to host
     cp <cont> <host>    Copy files/directories from container to host
     destroy [-f]        Remove container, volumes, and image for current project
@@ -59,123 +52,22 @@ Examples:
     devc rebuild                # Clean rebuild
     devc shell                  # Open interactive shell
     devc self-install           # Install devc to PATH
+    devc feature ls             # List features available and in use
+    devc feature add rust       # Add the Rust feature to the project dir
+    devc feature add neovim personal  # Adds neovim to the personal feature
+    devc feature rm docker      # Removes the docker feature from the project feature
     devc update                 # Update to latest version
     devc exec ls -la            # Run command in container
     devc upgrade                # Upgrade Claude Code to latest
     devc mount ~/data /data     # Add mount to container
+    devc clone ~/.config/nvim   # Clones the ~/.config/nvim directory into the devcontainer
+                                #  via a personal feature mount
     devc sync                   # Sync sessions from all devcontainers
     devc sync crypto            # Sync only matching devcontainer
     devc cp /some/file ./out    # Copy a path from container to host
     devc destroy                # Remove all project Docker resources
     devc destroy -f             # Skip confirmation prompt
 EOF
-}
-
-log_info() {
-  echo -e "${BLUE}[devc]${NC} $1"
-}
-
-log_success() {
-  echo -e "${GREEN}[devc]${NC} $1"
-}
-
-log_warn() {
-  echo -e "${YELLOW}[devc]${NC} $1"
-}
-
-log_error() {
-  echo -e "${RED}[devc]${NC} $1" >&2
-}
-
-check_devcontainerd_clean() {
-    # Verify the directory exists
-    if [ ! -d "$DEVCONTAINERD" ]; then
-        mkdir -p "$DEVCONTAINERD"
-    fi
-    pushd "$DEVCONTAINERD"
-    # Make sure it's a work directory
-    if ! git rev-parse --is-inside-work-tree &> /dev/null; then
-        git init -q -b main
-    fi
-
-    if [ ! -z "$(git status --porcelain)" ]; then
-        log_error "check_devcontainerd_clean() Resource directory dirty, please check $DEVCONTAINERD and commit all desirable changes";
-        popd
-        exit 1;
-    fi
-    popd
-}
-
-check_devcontainer_cli() {
-  if ! command -v devcontainer &>/dev/null; then
-    log_error "devcontainer CLI not found."
-    log_info "Install it with: npm install -g @devcontainers/cli"
-    exit 1
-  fi
-
-  # Check if clean
-  check_devcontainerd_clean
-  setup_preferences
-}
-
-check_no_sys_admin() {
-  local workspace="${1:-.}"
-  local dc_json="$workspace/.devcontainer/devcontainer.json"
-  [[ -f "$dc_json" ]] || return 0
-  if jq -e \
-    '.runArgs[]? | select(test("SYS_ADMIN"))' \
-    "$dc_json" >/dev/null 2>&1; then
-    log_error "SYS_ADMIN capability detected in runArgs."
-    log_error "This defeats the read-only .devcontainer mount."
-    exit 1
-  fi
-}
-
-commit_to_repository() {
-    obj="${1}"
-    pushd "$DEVCONTAINERD"
-    git add "$obj"
-    git commit --no-gpg-sign -m "Added $obj to the repository"
-    popd
-}
-
-initialize_from_home() {
-    local obj="${1}"
-    ensure_default "${HOME}/${obj}" "files" "$obj"
-}
-
-ensure_default() {
-    local src="${1}"
-    local area="${2}"
-    local obj="${3}"
-    local ref="${area}/$obj"
-    local dst="${DEVCONTAINERD}/${ref}"
-
-    # Skip if we don't have this file
-    if [ ! -e "$src" ]; then
-        log_info "ensure_default($src) doesn't exist, skipping"
-        return
-    elif [ -e "$dst" ]; then
-        log_info "ensure_default($ref) already exists, skipping"
-        return
-    fi
-
-    local dstdir="$(dirname "$dst")"
-
-    # Copy to the repository
-    mkdir -p "$dstdir"
-    cp -rL "$src" "$dstdir"
-    commit_to_repository "$ref"
-    log_info "ensure_default($ref) added to the repository"
-
-}
-
-setup_preferences() {
-    initialize_from_home ".gitconfig"
-    mkdir -p "$HOME/.claude/skills"
-    initialize_from_home ".claude/skills"
-    mkdir -p "$DEVCONTAINERD/features"
-    ensure_default "$SCRIPT_DIR/personal-feature" "features" "personal-feature"
 }
 
 get_workspace_folder() {
@@ -292,6 +184,7 @@ cmd_template() {
   mkdir -p "$devcontainer_dir"
 
   # Copy template files
+  cp "$SCRIPT_DIR/library.sh" "$devcontainer_dir/"
   cp "$SCRIPT_DIR/Dockerfile" "$devcontainer_dir/"
   cp "$SCRIPT_DIR/devcontainer.json" "$devcontainer_dir/"
   cp "$SCRIPT_DIR/post_install.py" "$devcontainer_dir/"
@@ -366,10 +259,12 @@ cmd_feature() {
   workspace_folder="$(get_workspace_folder ".")"
   action="${1:-}"
   feature="${2:-}"
+  target="${3:-project}"
 
-  project_json="$workspace_folder/.devcontainer/project-feature/devcontainer-feature.json"
-  if [ ! -f "$project_json" ]; then
-      echo "Project Feature missing, initialize with $SCRIPT_NAME .";
+  feature_rel_json=".devcontainer/${target}-feature/devcontainer-feature.json"
+  feature_json="$workspace_folder/$feature_rel_json"
+  if [ ! -f "$feature_json" ]; then
+      echo "JSON for $target feature missing, initialize with: $SCRIPT_NAME .";
       exit 1;
   fi
 
@@ -377,50 +272,58 @@ cmd_feature() {
   check_no_sys_admin "$workspace_folder"
 
   declare -a features
+  features+=("docker=ghcr.io/devcontainers/features/docker-in-docker:4")
   features+=("go=ghcr.io/devcontainers/features/go:1")
   features+=("java=ghcr.io/devcontainers/features/java:1")
+  features+=("neovim=ghcr.io/devcontainer-community/devcontainer-features/neovim.io:1")
   features+=("node=ghcr.io/devcontainers/features/node:2")
   features+=("python=ghcr.io/devcontainers/features/python:1")
   features+=("rust=ghcr.io/devcontainers/features/rust:1")
 
   echo ""
+  local modified=0
   case "$action" in
     add)
       for elm in "${features[@]}"; do
-          f="${elm%%=*}"
-          v="${elm#*=}"
-          if [ "$f" == "$feature" ]; then
-            new="$(jq -r ".dependsOn[\"$v\"] = {}" "$project_json")"
-            echo "$new" > "$project_json"
-            log_success "Added feature '$f' to $project_json"
-            exit 0
+          local f="${elm%%=*}"
+          local v="${elm#*=}"
+          if [ "$f" = "$feature" ]; then
+            local new="$(jq -r ".dependsOn[\"$v\"] = {}" "$feature_json")"
+            echo "$new" > "$feature_json"
+            log_success "Added feature '$v' to $feature_json"
+            modified=1
           fi
       done
       ;;
     ls)
       echo "Available feature short cuts:"
+      local proj="$workspace_folder/.devcontainer/project-feature/devcontainer-feature.json"
+      local pers="$workspace_folder/.devcontainer/personal-feature/devcontainer-feature.json"
       for elm in "${features[@]}"; do
-          f="${elm%%=*}"
-          v="${elm#*=}"
-          if grep -q "$v" "$workspace_folder/.devcontainer/project-feature/devcontainer-feature.json"; then
+          local f="${elm%%=*}"
+          local v="${elm#*=}"
+          local postfact=""
+          local is_set= " "
+          if grep -q "$v" "$feature_json"; then
               is_set="+"
-          else
-              is_set=" "
+          elif grep -q "$v" "$pers"; then
+              is_set="+"
+              postfact="(personal)"
           fi
-          echo " $is_set $f"
+          echo " $is_set $f $postfact"
       done
       echo ""
       echo "See https://containers.dev/features for more features"
       ;;
     rm)
       for elm in "${features[@]}"; do
-          f="${elm%%=*}"
-          v="${elm#*=}"
-          if [ "$f" == "$feature" ]; then
-            new="$(jq -r "del(.dependsOn[\"$v\"])" "$project_json")"
-            echo "$new" > "$project_json"
-            log_success "Removed feature '$f' from $project_json"
-            exit 0
+          local f="${elm%%=*}"
+          local v="${elm#*=}"
+          if [ "$f" = "$feature" ]; then
+            local new="$(jq -r "del(.dependsOn[\"$v\"])" "$feature_json")"
+            echo "$new" > "$feature_json"
+            log_success "Removed feature '$f' from $feature_json"
+            modified=1
           fi
       done
       ;;
@@ -428,6 +331,7 @@ cmd_feature() {
       echo "valid actions: add, ls, rm"
       ;;
   esac
+
 }
 
 cmd_shell() {
@@ -491,6 +395,50 @@ cmd_mount() {
 
   log_info "Adding mount: $host_path → $container_path"
   update_devcontainer_mounts "$devcontainer_json" "$host_path" "$container_path" "$readonly"
+
+  log_info "Recreating container with new mount..."
+  devcontainer up --workspace-folder "$workspace_folder" --remove-existing-container
+
+  log_success "Mount added: $host_path → $container_path"
+}
+
+cmd_clone() {
+  local host_path="${1:-}"
+  local readonly="false"
+
+  # Validate hostpath
+  if [[ -z "$host_path" ]]; then
+    log_error "Usage: devc clone <host_path> [--readonly]"
+    exit 1
+  elif [ ! -e "$host_path" ]; then
+    log_error "Host path does not exist: $1"
+    exit 1
+  fi
+
+  [[ "${2:-}" == "--readonly" ]] && readonly="true"
+
+  # Validate workspace
+  local workspace_folder="$(get_workspace_folder)"
+  local feature_rel_json=".devcontainer/personal-feature/devcontainer-feature.json"
+  local devcontainer_json="$workspace_folder/$feature_rel_json"
+  if [[ ! -f "$devcontainer_json" ]]; then
+    log_error "No $feature_rel_json found. Run 'devc template' first."
+    exit 1
+  fi
+
+  # Validate we have the tooling
+  check_devcontainer_cli
+
+  # Clone the directory into ~/.devcontainer/files
+  local rel_path="$(relpath_from_home "$host_path")"
+  local container_path="/home/vscode/$rel_path"
+  local clone_path="$DEVCONTAINERD/files/$rel_path"
+  # Use safe_clone, changes will be tracked
+  safe_clone "$host_path" "$clone_path"
+  commit_to_repository "files/$rel_path" "clone($rel_path) copied from $host_path"
+
+  log_info "Adding mount: $host_path → ~/$rel_path"
+  update_devcontainer_mounts "$devcontainer_json" "$clone_path" "$container_path" "$readonly"
 
   log_info "Recreating container with new mount..."
   devcontainer up --workspace-folder "$workspace_folder" --remove-existing-container
@@ -991,6 +939,9 @@ main() {
     ;;
   mount)
     cmd_mount "$@"
+    ;;
+  clone)
+    cmd_clone "$@"
     ;;
   sync)
     cmd_sync "$@"

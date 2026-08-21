@@ -5,20 +5,16 @@
     "dockerfile": "Dockerfile",
     "args": {
       "TZ": "${localEnv:TZ:UTC}",
-      "GIT_DELTA_VERSION": "0.18.2",
+      "GIT_DELTA_VERSION": "0.19.2",
       "ZSH_IN_DOCKER_VERSION": "1.2.1"
     }
   },
   "features": {
     "ghcr.io/devcontainers/features/github-cli:1": {},
-    "ghcr.io/devcontainers/features/docker-in-docker:4": {},
+    "ghcr.io/devcontainers-extra/features/fzf:1": {},
     "./project-feature" : {},
     "./personal-feature": {}
   },
-  "runArgs": [
-    "--cap-add=NET_ADMIN",
-    "--cap-add=NET_RAW"
-  ],
   "init": true,
   "updateRemoteUserUID": true,
   "customizations": {

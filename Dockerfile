@@ -12,6 +12,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN apt-get update && apt-get install -y --no-install-recommends \
   # Sandboxing support for Claude Code
   bubblewrap \
+  curl \
   socat \
   # Modern CLI tools
   fd-find \
@@ -25,6 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   nano \
   unzip \
   vim \
+  yq \
   # Network tools (for security testing)
   dnsutils \
   ipset \
@@ -34,7 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install git-delta
 # renovate: datasource=github-releases depName=dandavison/delta
-ARG GIT_DELTA_VERSION=0.18.2
+ARG GIT_DELTA_VERSION=0.19.2
 RUN ARCH=$(dpkg --print-architecture) && \
   curl -fsSL "https://github.com/dandavison/delta/releases/download/${GIT_DELTA_VERSION}/git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" -o /tmp/git-delta.deb && \
   dpkg -i /tmp/git-delta.deb && \
@@ -42,17 +44,6 @@ RUN ARCH=$(dpkg --print-architecture) && \
 
 # Install uv (Python package manager) via multi-stage copy
 COPY --from=uv /uv /usr/local/bin/uv
-
-# Install fzf from GitHub releases (newer than apt, includes built-in shell integration)
-# renovate: datasource=github-releases depName=junegunn/fzf
-ARG FZF_VERSION=0.70.0
-RUN ARCH=$(dpkg --print-architecture) && \
-  case "${ARCH}" in \
-    amd64) FZF_ARCH="linux_amd64" ;; \
-    arm64) FZF_ARCH="linux_arm64" ;; \
-    *) echo "Unsupported architecture: ${ARCH}" && exit 1 ;; \
-  esac && \
-  curl -fsSL "https://github.com/junegunn/fzf/releases/download/v${FZF_VERSION}/fzf-${FZF_VERSION}-${FZF_ARCH}.tar.gz" | tar -xz -C /usr/local/bin
 
 # Create directories and set ownership (combined for fewer layers)
 RUN mkdir -p /commandhistory /workspace /home/vscode/.claude /opt && \
@@ -90,8 +81,8 @@ RUN uv python install 3.13 --default
 # Install ast-grep (AST-based code search)
 RUN uv tool install ast-grep-cli
 
-# Install fnm (Fast Node Manager) and Node 22
-ARG NODE_VERSION=22
+# Install fnm (Fast Node Manager) and Node 24
+ARG NODE_VERSION=24
 ENV FNM_DIR="/home/vscode/.fnm"
 RUN curl -fsSL https://fnm.vercel.app/install | bash -s -- --install-dir "$FNM_DIR" --skip-shell && \
   export PATH="$FNM_DIR:$PATH" && \
