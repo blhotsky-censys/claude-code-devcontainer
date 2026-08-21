@@ -74,6 +74,47 @@ get_workspace_folder() {
   echo "${1:-$(pwd)}"
 }
 
+# Extracts features to a file
+extract_features_to_file() {
+  local devcontainer_json="$1"
+  local temp_file
+
+  [[ -f "$devcontainer_json" ]] || return 0
+
+  temp_file=$(mktemp)
+
+  # Filter out default mounts by target path (immune to project name changes)
+  local custom_features
+  custom_features=$(jq -c '
+    .features // {} | if length > 0 then . else empty end
+  ' "$devcontainer_json" 2>/dev/null) || true
+
+  if [[ -n "$custom_features" ]]; then
+    echo "$custom_features" >"$temp_file"
+    echo "$temp_file"
+  else
+    rm -f "$temp_file"
+  fi
+}
+# Merge preserved features back into devcontainer.json
+merge_features_from_file() {
+  local devcontainer_json="$1"
+  local features_file="$2"
+
+  [[ -f "$features_file" ]] || return 0
+  [[ -s "$features_file" ]] || return 0
+
+  local custom_features
+  custom_features=$(cat "$features_file")
+
+  local updated
+  updated=$(jq --argjson custom "$custom_features" '
+    .features = (.features // {}) + $custom
+  ' "$devcontainer_json")
+
+  echo "$updated" >"$devcontainer_json"
+}
+
 # Extract custom mounts from devcontainer.json to a temp file
 # Returns the temp file path, or empty string if no custom mounts
 #
@@ -164,6 +205,7 @@ cmd_template() {
   local devcontainer_dir="$target_dir/.devcontainer"
   local devcontainer_json="$devcontainer_dir/devcontainer.json"
   local preserved_mounts=""
+  local preserved_features=""
 
   if [[ -d "$devcontainer_dir" ]]; then
     log_warn "Devcontainer already exists at $devcontainer_dir"
@@ -178,6 +220,11 @@ cmd_template() {
     preserved_mounts=$(extract_mounts_to_file "$devcontainer_json")
     if [[ -n "$preserved_mounts" ]]; then
       log_info "Preserving custom mounts..."
+    fi
+    # Preserve custom features before overwriting
+    preserved_features=$(extract_features_to_file "$devcontainer_json")
+    if [[ -n "$preserved_features" ]]; then
+      log_info "Preserving custom features..."
     fi
   fi
 
@@ -205,6 +252,12 @@ cmd_template() {
     merge_mounts_from_file "$devcontainer_json" "$preserved_mounts"
     rm -f "$preserved_mounts"
     log_info "Custom mounts restored"
+  fi
+  # Restore preserved features
+  if [[ -n "$preserved_features" ]]; then
+    merge_features_from_file "$devcontainer_json" "$preserved_features"
+    rm -f "$preserved_features"
+    log_info "Custom features restored"
   fi
 
   log_success "Template installed to $devcontainer_dir"
@@ -259,12 +312,11 @@ cmd_feature() {
   workspace_folder="$(get_workspace_folder ".")"
   action="${1:-}"
   feature="${2:-}"
-  target="${3:-project}"
 
-  feature_rel_json=".devcontainer/${target}-feature/devcontainer-feature.json"
+  feature_rel_json=".devcontainer/devcontainer.json"
   feature_json="$workspace_folder/$feature_rel_json"
   if [ ! -f "$feature_json" ]; then
-      echo "JSON for $target feature missing, initialize with: $SCRIPT_NAME .";
+      echo "$feature_rel_json is missing, initialize with: $SCRIPT_NAME .";
       exit 1;
   fi
 
@@ -272,45 +324,51 @@ cmd_feature() {
   check_no_sys_admin "$workspace_folder"
 
   declare -a features
+  features+=("age=ghcr.io/devcontainers-extra/features/age:1")
+  features+=("argocd=ghcr.io/devcontainers-extra/features/argo-cd:1")
   features+=("docker=ghcr.io/devcontainers/features/docker-in-docker:4")
   features+=("go=ghcr.io/devcontainers/features/go:1")
+  features+=("git-lfs=ghcr.io/devcontainers-extra/features/git-lfs:1")
+  features+=("helmfile=ghcr.io/devcontainers-extra/features/helmfile:1")
   features+=("java=ghcr.io/devcontainers/features/java:1")
   features+=("neovim=ghcr.io/devcontainer-community/devcontainer-features/neovim.io:1")
   features+=("node=ghcr.io/devcontainers/features/node:2")
   features+=("python=ghcr.io/devcontainers/features/python:1")
   features+=("rust=ghcr.io/devcontainers/features/rust:1")
+  features+=("ruff=ghcr.io/devcontainers-extra/features/ruff:2")
+  features+=("sops=ghcr.io/devcontainers-extra/features/sops:1")
+  features+=("terraform=ghcr.io/devcontainers/features/terraform:1")
+  features+=("terragrunt=ghcr.io/devcontainers-extra/features/terragrunt:1")
+  features+=("typescript=ghcr.io/devcontainers-extra/features/typescript:2")
 
   echo ""
-  local modified=0
   case "$action" in
     add)
       for elm in "${features[@]}"; do
           local f="${elm%%=*}"
           local v="${elm#*=}"
           if [ "$f" = "$feature" ]; then
-            local new="$(jq -r ".dependsOn[\"$v\"] = {}" "$feature_json")"
-            echo "$new" > "$feature_json"
-            log_success "Added feature '$v' to $feature_json"
-            modified=1
+            local new="$(jq -r ".features[\"$v\"] = {}" "$feature_json")"
+            if [ $? -eq 0 ]; then
+                echo "$new" > "$feature_json"
+                log_success "Added feature '$v' to $feature_json"
+            else
+                log_error "failed to add feature, giving up"
+                exit 1;
+            fi
           fi
       done
       ;;
     ls)
       echo "Available feature short cuts:"
-      local proj="$workspace_folder/.devcontainer/project-feature/devcontainer-feature.json"
-      local pers="$workspace_folder/.devcontainer/personal-feature/devcontainer-feature.json"
       for elm in "${features[@]}"; do
           local f="${elm%%=*}"
           local v="${elm#*=}"
-          local postfact=""
-          local is_set= " "
+          local is_set=" "
           if grep -q "$v" "$feature_json"; then
               is_set="+"
-          elif grep -q "$v" "$pers"; then
-              is_set="+"
-              postfact="(personal)"
           fi
-          echo " $is_set $f $postfact"
+          echo " $is_set $f"
       done
       echo ""
       echo "See https://containers.dev/features for more features"
@@ -320,10 +378,14 @@ cmd_feature() {
           local f="${elm%%=*}"
           local v="${elm#*=}"
           if [ "$f" = "$feature" ]; then
-            local new="$(jq -r "del(.dependsOn[\"$v\"])" "$feature_json")"
-            echo "$new" > "$feature_json"
-            log_success "Removed feature '$f' from $feature_json"
-            modified=1
+            local new="$(jq -r "del(.features[\"$v\"])" "$feature_json")"
+            if [ $? -eq 0 ]; then
+                echo "$new" > "$feature_json"
+                log_success "Removed feature '$f' from $feature_json"
+            else
+                log_error "failed to remove feature, giving up"
+                exit 1;
+            fi
           fi
       done
       ;;
