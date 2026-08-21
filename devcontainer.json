@@ -9,14 +9,10 @@
   },
   "features": {
     "ghcr.io/devcontainers/features/github-cli:1": {},
-    "ghcr.io/devcontainers/features/docker-in-docker:4": {},
+    "ghcr.io/devcontainers-extra/features/fzf:1": {},
     "./project-feature" : {},
     "./personal-feature": {}
   },
-  "runArgs": [
-    "--cap-add=NET_ADMIN",
-    "--cap-add=NET_RAW"
-  ],
   "init": true,
   "updateRemoteUserUID": true,
   "customizations": {
