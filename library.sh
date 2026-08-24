@@ -120,6 +120,12 @@ ensure_default() {
         return
     fi
 
+    # Handle directories
+    realsrc="$(realpath "$src")"
+    if [ -d "$realsrc" ]; then
+        dst="$(dirname "$dst")/"
+    fi
+
     # Copy to the repository
     safe_clone "$src" "$dst"
     commit_to_repository "$ref" "ensure_default($ref) added to the repository"
@@ -138,27 +144,34 @@ relpath_from_home() {
 }
 
 initialize_from_home() {
-    local obj="$(relpath_from_home "${1}")"
+    local obj="${1}"
     ensure_default "${HOME}/${obj}" "files" "$obj"
 }
 
 safe_clone() {
     local src="$1"
     local dst="$2"
-    local dstdir="$(dirname "$dst")"
 
+    log_info "safe_clone() $src -> $dst"
+
+    #
     # Skip if the target doesn't exist
     if [ ! -e "$src" ]; then
         log_info "safe_clone($src) doesn't exist, skipping"
         return
     fi
-    realsrc="$(realpath "$src")"
+    local realsrc="$(realpath "$src")"
+    local realdst="$dst"
+    if [ "$(basename "$dst")" = "$(basename "$src")" ]; then
+        realdst="$(dirname "$dst")"
+    fi
 
-    mkdir -p "$dstdir"
+    # Make sure the parent directory exists
+    mkdir -p "$(dirname "$dst")"
     if [ -d "$realsrc" ]; then
-        rsync -rpL --delete --exclude=.git "$src" "$dstdir"
+        rsync -vrpL --delete --exclude=.git "$src" "$realdst/"
     elif [ -f "$realsrc" ]; then
-        cp -L "$src" "$dst"
+        cp -L "$src" "$realdst/"
     else
         log_error "safe_clone($src) real source '$realsrc' is not a file or directory"
         exit 1;

@@ -111,7 +111,14 @@ def setup_claude_settings():
     if "permissions" not in settings:
         settings["permissions"] = {}
     settings["permissions"]["defaultMode"] = "bypassPermissions"
+    # Be concise
     settings["outputStyle"] = "Concise"
+    # Baselines some plugins
+    if "enabledPlugins" not in settings:
+        settings["enabledPlugins"] = {}
+    settings["enabledPlugins"]["superpowers@claude-plugins-official"] = True
+    settings["enabledPlugins"]["security-awareness@skills-curated"] = True
+    settings["enabledPlugins"]["ask-questions-if-underspecified@trailofbits"] = True
 
     settings_file.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
     print(

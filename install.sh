@@ -34,8 +34,7 @@ Commands:
     self-install         Install 'devc' command to ~/.local/bin
     update               Update devc to the latest version
     template [dir]       Copy devcontainer template to directory (default: current)
-    feature <act> <name> [scope] Add/Remove features from projects action one of: add, rm, ls
-                                 scope is either "project", the default or "personal"
+    feature <act> <name> Add/Remove features from projects action one of: add, rm, ls
     exec <cmd>          Execute a command in the running container
     upgrade             Upgrade Claude Code to latest version
     mount <host> <cont> [--readonly] Add a mount to the devcontainer (recreates container)
@@ -54,7 +53,6 @@ Examples:
     devc self-install           # Install devc to PATH
     devc feature ls             # List features available and in use
     devc feature add rust       # Add the Rust feature to the project dir
-    devc feature add neovim personal  # Adds neovim to the personal feature
     devc feature rm docker      # Removes the docker feature from the project feature
     devc update                 # Update to latest version
     devc exec ls -la            # Run command in container
@@ -202,6 +200,7 @@ cmd_template() {
     exit 1
   }
 
+  check_devcontainer_cli
   local devcontainer_dir="$target_dir/.devcontainer"
   local devcontainer_json="$devcontainer_dir/devcontainer.json"
   local preserved_mounts=""
@@ -238,13 +237,16 @@ cmd_template() {
   cp "$SCRIPT_DIR/.zshrc" "$devcontainer_dir/"
   cp "$SCRIPT_DIR/initializeCommand.sh" "$devcontainer_dir/"
   cp "$SCRIPT_DIR/gitignore.project" "$devcontainer_dir/.gitignore"
+  log_info "initialized $devcontainer_dir/"
 
-  if [ ! -e "$devcontainer_dir/project-feature" ]; then
-      cp -rL "$SCRIPT_DIR/project-feature" "$devcontainer_dir/"
+  if [ ! -d "$devcontainer_dir/project-feature" ]; then
+    log_info "staging a default project-feature"
+    safe_clone "$SCRIPT_DIR/project-feature" "$devcontainer_dir/"
   fi
 
-  if [ ! -e "$devcontainer_dir/personal-feature" ]; then
-      ln -s "$DEVCONTAINERD/features/personal-feature" "$devcontainer_dir/personal-feature"
+  if [ ! -d "$devcontainer_dir/personal-feature" ]; then
+    log_info "staging a default personal-feature"
+    safe_clone "$DEVCONTAINERD/features/personal-feature" "$devcontainer_dir/"
   fi
 
   # Restore preserved mounts
@@ -331,7 +333,6 @@ cmd_feature() {
   features+=("git-lfs=ghcr.io/devcontainers-extra/features/git-lfs:1")
   features+=("helmfile=ghcr.io/devcontainers-extra/features/helmfile:1")
   features+=("java=ghcr.io/devcontainers/features/java:1")
-  features+=("neovim=ghcr.io/devcontainer-community/devcontainer-features/neovim.io:1")
   features+=("node=ghcr.io/devcontainers/features/node:2")
   features+=("python=ghcr.io/devcontainers/features/python:1")
   features+=("rust=ghcr.io/devcontainers/features/rust:1")
