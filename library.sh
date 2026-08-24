@@ -131,11 +131,6 @@ ensure_default() {
     commit_to_repository "$ref" "ensure_default($ref) added to the repository"
 }
 
-ensure_file() {
-    local file="$1"
-    test -f "$file" || touch "$file"
-}
-
 relpath_from_home() {
     local src="$1"
     local res_path="$(cd "$(dirname "$src")" && pwd)/$(basename "$src")"
@@ -179,10 +174,32 @@ safe_clone() {
 }
 
 setup_preferences() {
-    initialize_from_home ".gitconfig"
+    setup_default_gitconfig
     mkdir -p "$HOME/.claude/skills"
     initialize_from_home ".claude/skills"
     mkdir -p "$DEVCONTAINERD/features"
     ensure_default "$SCRIPT_DIR/personal-feature" "features" "personal-feature"
 }
 
+setup_default_gitconfig() {
+    local src="$HOME/.gitconfig"
+    local gitconfig="$DEVCONTAINERD/files/.gitconfig"
+
+    # Set an empty gitconfig
+    test -f "$src" || touch "$src"
+
+    if [ ! -e "$gitconfig" ]; then
+        log_info "copying and editting a devcontainer gitconfig from ~/.gitconfig"
+        # Copy to dest
+        safe_clone "$src" "$gitconfig"
+        # Remove some sections
+        declare -a remove=("include" "http" "credential" "credential.https://github.com" "credential.https://gist.github.com")
+        for section in "${remove[@]}"; do
+            log_info "removing '$section' from devcontainer config to prevent weirdness"
+            git config remove-section --file "$gitconfig" "$section"
+        done
+        commit_to_repository "files/.gitconfig" "initializing gitconfig from ~/.gitconfig"
+    else
+        log_info "gitconfig already exists, skipping"
+    fi
+}

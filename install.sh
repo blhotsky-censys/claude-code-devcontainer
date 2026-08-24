@@ -38,8 +38,10 @@ Commands:
     exec <cmd>          Execute a command in the running container
     upgrade             Upgrade Claude Code to latest version
     mount <host> <cont> [--readonly] Add a mount to the devcontainer (recreates container)
-    clone <host> [--readonly] Copy contents of host path to ~/.devcontainer/files and mount
-                               the result into the HOME directory of the container
+    clone <host> [--readonly] [--no-rebuild]
+            Copy contents of host path to ~/.devcontainer/files and mount
+            the result into the HOME directory of the container and recreates
+            the container unless --no-rebuild is specified
     sync [project] [--trusted]  Sync sessions from devcontainers to host
     cp <cont> <host>    Copy files/directories from container to host
     destroy [-f]        Remove container, volumes, and image for current project
@@ -467,7 +469,7 @@ cmd_mount() {
 
 cmd_clone() {
   local host_path="${1:-}"
-  local readonly="false"
+  shift
 
   # Validate hostpath
   if [[ -z "$host_path" ]]; then
@@ -477,6 +479,25 @@ cmd_clone() {
     log_error "Host path does not exist: $1"
     exit 1
   fi
+
+  local readonly="false"
+  local skip_recreate="false"
+  while [[ "$#" -gt 0 ]]; do
+      case $1 in
+          --readonly)
+              readonly="true"
+              shift
+              ;;
+          --no-rebuild|--no-recreate)
+              skip_recreate="true"
+              shift
+              ;;
+          *)
+              echo "Unknown parameter: '$1'"
+              exit 1
+              ;;
+      esac
+  done
 
   [[ "${2:-}" == "--readonly" ]] && readonly="true"
 
@@ -503,8 +524,10 @@ cmd_clone() {
   log_info "Adding mount: $host_path → ~/$rel_path"
   update_devcontainer_mounts "$devcontainer_json" "$clone_path" "$container_path" "$readonly"
 
-  log_info "Recreating container with new mount..."
-  devcontainer up --workspace-folder "$workspace_folder" --remove-existing-container
+  if [[ "$skip_recreate" != "true" ]]; then
+    log_info "Recreating container with new mount..."
+    devcontainer up --workspace-folder "$workspace_folder" --remove-existing-container
+  fi
 
   log_success "Mount added: $host_path → $container_path"
 }
