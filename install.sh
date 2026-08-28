@@ -506,18 +506,24 @@ sync_one_container() {
   # Sync each project key subdirectory.
   for key_path in "$tmpdir"/*/; do
     [[ ! -d "$key_path" ]] && continue
+    # Does not follow symlinks
+    [[ -L "${key_path%/}" ]] && continue
     local key dest_key
     key=$(basename "$key_path")
 
+    # Always namespace under -devcontainer-<project>.
     if [[ "$key" == "-workspace" ]]; then
       dest_key="-devcontainer-${project_name}"
     else
-      dest_key="${key}"
+      dest_key="-devcontainer-${project_name}${key}"
     fi
 
     local dest_dir="${host_projects}/${dest_key}"
     mkdir -p "$dest_dir"
 
+    # Session logs only. Copying every file would let the container plant
+    # arbitrary content in ~/.claude/projects/<key>/, including memory/*.md,
+    # which host Claude Code loads into its context.
     local copied=0
     while IFS= read -r -d '' file; do
       local rel="${file#"$key_path"}"
@@ -529,7 +535,7 @@ sync_one_container() {
         cp -p "$file" "$dest_file"
         copied=$((copied + 1))
       fi
-    done < <(find "$key_path" -type f -print0)
+    done < <(find "$key_path" -type f -name '*.jsonl' -print0)
 
     if [[ "$copied" -gt 0 ]]; then
       echo "  Synced ${copied} file(s) -> ${dest_key}"
