@@ -9,6 +9,9 @@
       "ZSH_IN_DOCKER_VERSION": "1.2.1"
     }
   },
+  "capAdd":[
+      "SYS_ADMIN"
+  ],
   "features": {
     "ghcr.io/devcontainers/features/github-cli:1": {},
     "ghcr.io/devcontainers-extra/features/fzf:1": {},

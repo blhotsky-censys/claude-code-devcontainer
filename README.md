@@ -138,16 +138,83 @@ devc up             Start the devcontainer
 devc rebuild        Rebuild container (preserves persistent volumes)
 devc destroy [-f]   Remove container, volumes, and image for current project
 devc down           Stop the container
+devc feature <act> <name> Add/remove features, action can be: add, rm, ls
 devc shell          Open zsh shell in container
 devc exec CMD       Execute command inside the container
 devc upgrade        Upgrade Claude Code in the container
 devc mount SRC DST  Add a bind mount (host → container)
+devc clone SRC [--readonly] [--no-rebuild] Copy contents of host HOME
+                    directory to ~/.devcontainerd/files. Recreates the
+                    container unless --no-rebuild
 devc sync [NAME]    Sync Claude Code sessions from devcontainers to host
 devc template DIR   Copy devcontainer files to directory
 devc self-install   Install devc to ~/.local/bin
 ```
 
 > **Note:** Use `devc destroy` to clean up a project's Docker resources. Removing containers manually (e.g., `docker rm`) will leave orphaned volumes and images behind that `devc destroy` won't be able to find.
+
+## Security Enhancements
+
+Running this tool creates a `~/.devcontainerd` local git repository. If that
+git repository is not pristine, an exception is thrown. To continue, review
+the changes in the `~/.devcontainerd` directory and either commit the changes
+or reset to the last known good state.
+
+This model makes changes to persistent file storage explicit and tracked. This
+tool will populate files into the `~/.devcontainerd` directory and commit them
+as part of its operation. The one design flaw in this system is that the
+current state, at the time your first run `devc`, is considered a known good
+state. This may or may not be true.
+
+### ~/.devcontainerd
+
+What to expect in this git repository.
+
+* `~/.devcontainerd/files/.gitconfig` - This file is copied from
+  `~/.gitconfig` with some elements removed automatically: `http` and
+  `credentials:*`.
+* `~/.devcontainerd/files/.claude/skills` - This directory is copied from
+  `~/.claude/skills` automatically.
+* `~/.devcontainerd/features/personal-feature` - This directory is template
+  from the `personal-feature` directory in this repository. Due to a bug in
+  the `devcontainer` CLI, this is copied into the project workspace
+  `.devcontainer/personal-feature` (which is automatically `.gitignored`'d)
+
+Running the `devc clone ...` command will copy other files or directories and
+automatically add the mounts to the project's `personal-feature`.
+
+## Feature Selection
+
+`devc feature <add|rm|ls>` convenience wrapper for adding features to a devcontainer.
+
+```
+❯ devc feature ls
+[devc] gitconfig already exists, skipping
+[devc] ensure_default(files/.claude/skills) already exists, skipping
+[devc] ensure_default(features/personal-feature) already exists, skipping
+
+Available feature short cuts:
+   age
+   argocd
+ + docker
+   go
+   git-lfs
+   helmfile
+   java
+   node
+   python
+ + rust
+   ruff
+   sops
+   terraform
+   terragrunt
+   typescript
+
+See https://containers.dev/features for more features
+```
+This output provides a list of feature shortcuts. The `+` symbol denotes a
+loaded feature. Other features may be used, but the idea is this list provides
+the recommended, vetted features.
 
 ## Session Sync for `/insights`
 
@@ -182,6 +249,22 @@ This adds a bind mount to `devcontainer.json` and recreates the container. Exist
 **Tip:** A shared "drop folder" is useful for passing files in without mounting your entire home directory.
 
 > **Security note:** Avoid mounting large host directories (e.g., `$HOME`). Every mounted path is writable from inside the container unless `--readonly` is specified, which undermines the filesystem isolation this project provides.
+
+### Cloning
+
+In order to facilitate large directories in your `$HOME`, you can `dev clone`
+them to the devcontainer. This creates a deep recursive copy and adds them to
+the `~/.devcontainerd` repository in the `files` directory.
+
+Example:
+
+```
+$ devc clone ~/.config/nvim
+```
+This will copy the current contents of the `~/.config/nvim` directory into
+`~/.devcontainerd/files` and check in the state. It adds a mount for the
+devcontainer at `~/.config/vim` via your `personal-feature`.
+
 
 ## Network Isolation
 
@@ -234,7 +317,7 @@ The container auto-configures `bypassPermissions` mode—Claude runs commands wi
 
 | Component | Details |
 |-----------|---------|
-| Base | Ubuntu 24.04, Node.js 22, Python 3.13 + uv, zsh |
+| Base | Ubuntu 24.04, Node.js 24, Python 3.13 + uv, zsh |
 | User | `vscode` (passwordless sudo), working dir `/workspace` |
 | Tools | `rg`, `fd`, `tmux`, `fzf`, `delta`, `iptables`, `ipset` |
 | Volumes (survive rebuilds) | Command history (`/commandhistory`), Claude config (`~/.claude`), GitHub CLI auth (`~/.config/gh`) |
