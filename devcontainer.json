@@ -68,6 +68,8 @@
     "DO_NOT_TRACK": "1"
   },
   "remoteEnv": {
+    "CLAUDE_CODE_OAUTH_TOKEN": "${localEnv:CLAUDE_CODE_OAUTH_TOKEN:}",
+    "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY:}",
     "RTK_TELEMETRY_DISABLED": "1"
   },
   "initializeCommand": ".devcontainer/initializeCommand.sh",
