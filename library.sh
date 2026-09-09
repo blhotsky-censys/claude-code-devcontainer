@@ -45,7 +45,10 @@ check_devcontainerd_clean() {
     pushd "$DEVCONTAINERD"
     # Make sure it's a work directory
     if ! git rev-parse --is-inside-work-tree &> /dev/null; then
+        # Initialize as a git repository to track changes
         git init -q -b main
+        # Disable commit signing for this repo since we only need the change tracking element
+        git config set --local commit.gpgSign false
     fi
 
     if [ ! -z "$(git status --porcelain)" ]; then
@@ -193,10 +196,11 @@ setup_default_gitconfig() {
         # Copy to dest
         safe_clone "$src" "$gitconfig"
         # Remove some sections
-        declare -a remove=("include" "http" "credential" "credential.https://github.com" "credential.https://gist.github.com")
+        declare -a remove=("fdsk" "include" "http" "credential" "credential.https://github.com" "credential.https://gist.github.com")
         for section in "${remove[@]}"; do
-            log_info "removing '$section' from devcontainer config to prevent weirdness"
-            git config remove-section --file "$gitconfig" "$section" || true
+            if git config remove-section --file "$gitconfig" "$section" &> /dev/null; then
+                log_info "removed '$section' from devcontainer config to prevent weirdness"
+            fi
         done
         commit_to_repository "files/.gitconfig" "initializing gitconfig from ~/.gitconfig"
     else
