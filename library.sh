@@ -196,7 +196,7 @@ setup_default_gitconfig() {
         declare -a remove=("include" "http" "credential" "credential.https://github.com" "credential.https://gist.github.com")
         for section in "${remove[@]}"; do
             log_info "removing '$section' from devcontainer config to prevent weirdness"
-            git config remove-section --file "$gitconfig" "$section"
+            git config remove-section --file "$gitconfig" "$section" || true
         done
         commit_to_repository "files/.gitconfig" "initializing gitconfig from ~/.gitconfig"
     else
