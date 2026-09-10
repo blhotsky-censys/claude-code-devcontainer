@@ -102,7 +102,7 @@ commit_to_repository() {
     pushd "$DEVCONTAINERD"
     if [ ! -z "$(git status --porcelain)" ]; then
         git add "$obj"
-        git commit --no-gpg-sign -m "devc: $msg"
+        git commit --no-gpg-sign -m "devc: $msg" > /dev/null
         log_info "commit($obj): $msg"
     else
         log_info "commit($obj): already clean, skipping"
@@ -205,9 +205,9 @@ setup_default_gitconfig() {
         commit_to_repository "files/.gitconfig" "initializing gitconfig from ~/.gitconfig"
     else
         # Aikido is persistent, make sure the HTTP section is removed
-        if git config get --file "$gitconfig" "http" &> /dev/null; then
+        if git config get --file "$gitconfig" "http.sslcainfo" &> /dev/null; then
             if git config remove-section --file "$gitconfig" "http" &> /dev/null; then
-                log_info "removed 'http' from devcontainer config to prevent weirdness"
+                commit_to_repository "files/.gitconfig" "removed 'http' from devcontainer config to prevent weirdness"
             fi
         fi
         log_info "gitconfig already exists, skipping"

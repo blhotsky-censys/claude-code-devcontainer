@@ -4,23 +4,8 @@ set -euo pipefail
 # Claude Code Devcontainer CLI Helper
 # Provides the `devc` command for managing devcontainers
 
-# Silence, fools!
-pushd() {
-    command pushd "$@" > /dev/null
-}
-
-popd() {
-    command popd "$@" > /dev/null
-}
-
 # Resolve symlinks to get actual script location
 SOURCE="$(realpath "${BASH_SOURCE[0]}")"
-while [[ -L "$SOURCE" ]]; do
-  DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
-  SOURCE="$(readlink "$SOURCE")"
-  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
-done
-SCRIPT_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
 SCRIPT_DIR="$(dirname "$SOURCE")"
 SCRIPT_NAME="$(basename "$0")"
 DEVCONTAINERD="${HOME}/.devcontainerd"
@@ -262,7 +247,6 @@ cmd_template() {
   mkdir -p "$devcontainer_dir"
 
   # Copy template files
-  cp "$SCRIPT_DIR/library.sh" "$devcontainer_dir/"
   cp "$SCRIPT_DIR/Dockerfile" "$devcontainer_dir/"
   cp "$SCRIPT_DIR/devcontainer.json" "$devcontainer_dir/"
   cp "$SCRIPT_DIR/post_install.py" "$devcontainer_dir/"
@@ -270,6 +254,9 @@ cmd_template() {
   cp "$SCRIPT_DIR/initializeCommand.sh" "$devcontainer_dir/"
   cp "$SCRIPT_DIR/gitignore.project" "$devcontainer_dir/.gitignore"
   log_info "initialized $devcontainer_dir/"
+
+  # Cleanup a stale file
+  rm -f "$devcontainer_dir/library.sh"
 
   if [ ! -d "$devcontainer_dir/project-feature" ]; then
     log_info "staging a default project-feature"

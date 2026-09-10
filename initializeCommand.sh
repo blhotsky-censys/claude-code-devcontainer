@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-SOURCE="$(realpath "${BASH_SOURCE[0]}")"
+SOURCE="$(realpath "$(which devc)")"
 SCRIPT_DIR="$(dirname "$SOURCE")"
 . "$SCRIPT_DIR/library.sh"
 
