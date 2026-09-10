@@ -7,8 +7,9 @@
       "TZ": "${localEnv:TZ:UTC}"
     }
   },
-  "capAdd":[
-      "SYS_ADMIN"
+  "runArgs": [
+    "--cap-add=NET_ADMIN",
+    "--cap-add=NET_RAW"
   ],
   "features": {
     "ghcr.io/devcontainers/features/github-cli:1": {},
