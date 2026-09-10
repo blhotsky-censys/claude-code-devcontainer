@@ -196,7 +196,7 @@ setup_default_gitconfig() {
         # Copy to dest
         safe_clone "$src" "$gitconfig"
         # Remove some sections
-        declare -a remove=("fdsk" "include" "http" "credential" "credential.https://github.com" "credential.https://gist.github.com")
+        declare -a remove=("include" "http" "credential" "credential.https://github.com" "credential.https://gist.github.com")
         for section in "${remove[@]}"; do
             if git config remove-section --file "$gitconfig" "$section" &> /dev/null; then
                 log_info "removed '$section' from devcontainer config to prevent weirdness"
@@ -204,6 +204,12 @@ setup_default_gitconfig() {
         done
         commit_to_repository "files/.gitconfig" "initializing gitconfig from ~/.gitconfig"
     else
+        # Aikido is persistent, make sure the HTTP section is removed
+        if git config get --file "$gitconfig" "http" &> /dev/null; then
+            if git config remove-section --file "$gitconfig" "http" &> /dev/null; then
+                log_info "removed 'http' from devcontainer config to prevent weirdness"
+            fi
+        fi
         log_info "gitconfig already exists, skipping"
     fi
 }
